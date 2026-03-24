@@ -1,0 +1,350 @@
+---
+title: 'Lecture 3: Cholesky Decomposition'
+author: Joong-Ho Won
+institution: Seoul National University
+date: today
+date-format: "MMMM YYYY"
+format:
+  html:
+    toc: true
+  ipynb: default
+filters:
+  - collapse-output
+---
+
+<!-- Requires 'collapse-output' quarto package: https://github.com/mcanouil/quarto-collapse-output --> 
+```{r}
+#| output-fold: true
+#| jupyter: {outputs_hidden: true}
+sessionInfo()
+```
+
+
+
+```{r}
+#| output-fold: true
+#| jupyter: {outputs_hidden: true}
+library(Matrix)
+library(mvtnorm)
+library(microbenchmark)
+```
+
+## Cholesky Decomposition
+
+* Named after [André-Louis Cholesky, 1875-1918](https://en.wikipedia.org/wiki/André-Louis_Cholesky).
+
+* Our mantra 2:
+
+> **The structure should be exploited whenever possible in solving a problem.** 
+
+  Common structures include: symmetry, positive (semi)definiteness, sparsity, Kronecker product, low rank, ...
+
+* Recall that a matrix $M$ is positive (semi)definite if
+$$
+    \mathbf{x}^T\mathbf{M}\mathbf{x} > 0 ~(\ge 0), \quad \forall \mathbf{x}\neq\mathbf{0}.
+$$
+
+* We can always assume that a postive (semi)definite matrix is symmetric (why?)
+
+* Example: normal equation 
+$$
+    \mathbf{X}^T \mathbf{X} \beta = \mathbf{X}^T \mathbf{y}
+$$
+for linear regression, the coefficient matrix $\mathbf{X}^T \mathbf{X}$ is symmetric and positive semidefinite. How to exploit this structure?
+
+* Most of time statisticians deal with positive (semi)definite matrices.
+
+## Theorem 
+
+* **Theorem**: Let $\mathbf{A} \in \mathbb{R}^{n \times n}$ be symmetric and positive definite. Then $\mathbf{A} = \mathbf{L} \mathbf{L}^T$, where $\mathbf{L}$ is lower triangular with positive diagonal entries and is unique.  
+**Proof** (by induction):  
+If $n=1$, then $0 < a = \sqrt{a}\sqrt{a}$. For $n>1$, the block equation
+$$
+\begin{eqnarray*}
+\begin{bmatrix}
+a_{11} & \mathbf{a}^T \\ \mathbf{a} & \mathbf{A}_{22}
+\end{bmatrix} =
+\begin{bmatrix}
+	\ell_{11} & \mathbf{0}_{n-1}^T \\ \mathbf{b} & \mathbf{L}_{22}
+\end{bmatrix}
+\begin{bmatrix}
+	\ell_{11} & \mathbf{b}^T \\ \mathbf{0}_{n-1} & \mathbf{L}_{22}^T
+\end{bmatrix}
+\end{eqnarray*}
+$$
+entails
+$$
+\begin{eqnarray*}
+	a_{11} &=& \ell_{11}^2 \\
+	\mathbf{a} &=& \ell_{11} \mathbf{b}	\\
+	\mathbf{A}_{22} &=&   \mathbf{b} \mathbf{b}^T + \mathbf{L}_{22} \mathbf{L}_{22}^T
+    .
+\end{eqnarray*}
+$$  
+Since $a_{11}>0$ (why?), $\ell_{11}=\sqrt{a_{11}}$ and $\mathbf{b}=a_{11}^{-1/2}\mathbf{a}$ are uniquely determined. 
+$\mathbf{A}_{22} - \mathbf{b} \mathbf{b}^T = \mathbf{A}_{22} - a_{11}^{-1} \mathbf{a} \mathbf{a}^T$ is positive definite of size $(n-1)\times(n-1)$ because $\mathbf{A}_{22}$ is positive definite (why? homework). By the induction hypothesis, lower triangular $\mathbf{L}_{22}$ such that $\mathbf{A}_{22} - \mathbf{b} \mathbf{b}^T = \mathbf{L}_{22}^T\mathbf{L}_{22}$ exists and is unique.
+
+* This proof is constructive and completely specifies the algorithm: 
+```r
+for (k in seq_len(n)) {
+    for (j in k + seq_len(n - k)) {
+        a_jk_div_a_kk <- A[j, k] / A[k, k] 
+        for (i in j - 1 + seq_len(n - j + 1)) {
+            A[i, j] <- A[i, j] - A[i, k] * a_jk_div_a_kk    # L_22
+        }
+    }
+    sqrt_akk <- sqrt(A[k, k])
+    for (i in k - 1 + seq_len(n - k + 1)) {
+        A[i, k] = A[i, k] / sqrt_akk    # l_11 and b
+    }
+}
+```
+
+<img src="http://www.netlib.org/utk/papers/factor/_25826_figure440.gif" width="500" align="center"/>
+
+Source: <http://www.netlib.org>
+
+* Computational cost: 
+$$
+\frac{1}{2} [2(n-1)^2 + 2(n-2)^2 + \cdots + 2 \cdot 1^2] \approx \frac{1}{3} n^3 \quad \text{flops}
+$$ 
+plus $n$ square roots. **Half** the cost of LU decomposition.
+
+* In general Cholesky decomposition is very stable. Failure of the decomposition simply means $\mathbf{A}$ is not positive definite. **It is an efficient way to test positive definiteness.**
+
+
+## Pivoting
+
+* Pivoting is only needed if you want the Cholesky factor of a positive *semidefinite* matrix.
+
+* When $\mathbf{A}$ does not have full rank, e.g., $\mathbf{X}^T \mathbf{X}$ with a non-full column rank $\mathbf{X}$, we encounter $a_{kk} = 0$ during the procedure.
+
+* **Symmetric pivoting**. At each stage $k$, we permute both row and column such that $\max_{k \le i \le n} a_{ii}$ becomes the pivot. If we encounter $\max_{k \le i \le n} a_{ii} = 0$, then $\mathbf{A}[k:n,k:n] = \mathbf{0}$ (why?) and the algorithm terminates.
+
+* With symmetric pivoting: 
+$$
+\mathbf{P} \mathbf{A} \mathbf{P}^T = \mathbf{L} \mathbf{L}^T,
+$$
+where $\mathbf{P}$ is a permutation matrix and $\mathbf{L} \in \mathbb{R}^{n \times r}$, $r = \text{rank}(\mathbf{A})$.
+
+## Implementation
+
+* LAPACK functions: [`dpotrf`](http://www.netlib.org/lapack/explore-html/d1/d7a/group__double_p_ocomputational_ga2f55f604a6003d03b5cd4a0adcfb74d6.html#ga2f55f604a6003d03b5cd4a0adcfb74d6) (without pivoting), [`dpstrf`](http://www.netlib.org/lapack/explore-html/da/dba/group__double_o_t_h_e_rcomputational_ga31cdc13a7f4ad687f4aefebff870e1cc.html#ga31cdc13a7f4ad687f4aefebff870e1cc) (with pivoting).
+
+* R functions: `base::chol()` or `Matrix::chol()` (gives an **upper** triangular factor: $A = R^T R$)
+
+## Example: positive definite matrix
+
+```{r}
+#| output-fold: true
+#| jupyter: {outputs_hidden: true}
+A <- t(Matrix(c(4, 12, -16, 12, 37, -43, -16, -43, 98), nrow=3))  # check out this is pd!
+A
+```
+
+```{r}
+#| output-fold: true
+#| jupyter: {outputs_hidden: true}
+# Cholesky without pivoting
+Achol <- Matrix::chol(Matrix::symmpart(A))
+Achol
+```
+
+```{r}
+#| output-fold: true
+#| jupyter: {outputs_hidden: true}
+class(Achol)
+```
+
+```{r}
+#| output-fold: true
+#| jupyter: {outputs_hidden: true}
+getSlots("Cholesky")
+```
+
+```{r}
+#| output-fold: true
+#| jupyter: {outputs_hidden: true}
+str(Achol)
+```
+
+```{r}
+#| output-fold: true
+#| jupyter: {outputs_hidden: true}
+b <- c(1.0, 2.0, 3.0)
+solve(A, b) # this does LU; wasteful!; 2/3 n^3 + 2n^2
+```
+
+```{r}
+#| output-fold: true
+#| jupyter: {outputs_hidden: true}
+y <- solve(t(Achol), b) # two triangular solves; only 2n^2 flops
+solve(Achol, y)
+```
+
+```{r}
+#| output-fold: true
+#| jupyter: {outputs_hidden: true}
+det(A) # this actually does LU; wasteful!
+```
+
+```{r}
+#| output-fold: true
+#| jupyter: {outputs_hidden: true}
+det(Achol)^2 # cheap
+```
+
+```{r}
+#| output-fold: true
+#| jupyter: {outputs_hidden: true}
+solve(A) # this does LU!
+```
+
+```{r}
+#| output-fold: true
+#| jupyter: {outputs_hidden: true}
+solve(Achol, solve(t(Achol))) # 2n triangular solves
+```
+
+## Example: positive *semi*definite matrix
+
+```{r}
+#| output-fold: true
+#| jupyter: {outputs_hidden: true}
+(A <- Matrix(c(1,1,.5,1,1,.5,.5,.5,1), nrow=3))
+eigen(A, symmetric = TRUE)$values
+```
+
+```{r}
+#| output-fold: true
+#| jupyter: {outputs_hidden: true}
+#| error: true
+Matrix::chol(A, pivot=FALSE) # 2nd argument requests pivoting
+```
+
+```{r}
+#| output-fold: true
+#| jupyter: {outputs_hidden: true}
+(Achol <- base::chol(A, pivot=TRUE)) # turn off checking pd
+attr(Achol, "pivot")
+attr(Achol, "rank")
+```
+
+```{r}
+#| output-fold: true
+#| jupyter: {outputs_hidden: true}
+Matrix::rankMatrix(A) # determine rank from SVD, which is more numerically stable
+```
+
+```{r}
+#| output-fold: true
+#| jupyter: {outputs_hidden: true}
+Achol[, attr(Achol, "pivot")]
+```
+
+```{r}
+#| output-fold: true
+#| jupyter: {outputs_hidden: true}
+(P <- as(attr(Achol, "pivot"), "pMatrix"))   # permutation matrix, actually P' in our notation
+```
+
+```{r}
+#| output-fold: true
+#| jupyter: {outputs_hidden: true}
+# P A P' = L L'
+Matrix::norm(t(P) %*% A %*% P - t(Achol) %*% Achol, type="F")  # Frobenius norm
+```
+
+## Applications
+
+* **No inversion** principle: whenever we see matrix inverse, we should think in terms of solving linear equations. If the matrix is positive (semi)definite, use Cholesky decomposition, which is twice cheaper than LU decomposition.
+
+### Multivariate normal density 
+
+Multivariate normal density $\mathcal{N}(0, \Sigma)$, where $\Sigma$ is $n\times n$ positive definite, is
+$$
+    \frac{1}{(2\pi)^{n/2}\det(\Sigma)^{1/2}}\exp\left(-\frac{1}{2}\mathbf{y}^T\Sigma^{-1}\mathbf{y}\right).
+$$
+
+Hence the log likelihood is
+$$
+- \frac{n}{2} \log (2\pi) - \frac{1}{2} \log \det \Sigma - \frac{1}{2} \mathbf{y}^T \Sigma^{-1} \mathbf{y}.
+$$
+
+* Method 1: 
+    1. compute explicit inverse $\Sigma^{-1}$ ($2n^3$ flops), 
+    2. compute quadratic form ($2n^2 + 2n$ flops), 
+    3. compute determinant ($2n^3/3$ flops).
+    
+* Method 2: 
+    1. Cholesky decomposition $\Sigma = \mathbf{L} \mathbf{L}^T$ ($n^3/3$ flops), 
+    2. Solve $\mathbf{L} \mathbf{x} = \mathbf{y}$ by forward substitutions ($n^2$ flops), 
+    3. compute quadratic form $\mathbf{x}^T \mathbf{x}$ ($2n$ flops), and 
+    4. compute determinant from Cholesky factor ($n$ flops).  
+
+**Which method is better?**
+
+```{r}
+#| output-fold: true
+#| jupyter: {outputs_hidden: true}
+# word-by-word transcription of mathematical expression
+# Matrix::determinant computes the logarithm of the determinant
+logpdf_mvn_1 <- function(y, Sigma) {
+    n <- length(y)
+    - (n / 2) * log(2 * pi) - (1 / 2) * Matrix::determinant(Sigma)$modulus - (1 / 2) * t(y) %*% solve(Sigma) %*% y
+}
+
+# you learnt why you should avoid inversion
+logpdf_mvn_2 <- function(y, Sigma) {
+    n <- length(y)
+    Sigmachol <- Matrix::chol(Matrix::symmpart(Sigma))
+    - (n / 2) * log(2 * pi) - Matrix::determinant(Sigmachol)$modulus - (1 / 2) * sum(abs(solve(t(Sigmachol), y))^2)
+}
+
+# this is for the efficiency-concerned  
+logpdf_mvn_3 <- function(y, Sigma) {
+    n <- length(y)
+    Sigmachol <- Matrix::chol(Matrix::symmpart(Sigma))
+    - 0.5 * n * log(2 * pi) - sum(log(diag(Sigmachol))) - 0.5 * sum(abs(solve(t(Sigmachol), y))^2)
+}
+```
+
+```{r}
+#| output-fold: true
+#| jupyter: {outputs_hidden: true}
+set.seed(123) # seed
+
+n <- 1000
+# a pd matrix
+Sigma_half <- Matrix(rnorm(n * (2 * n)), nrow=n)
+Sigma <- Sigma_half %*% t(Sigma_half)
+Sigma <- Matrix::symmpart(Sigma)
+Sigmachol <- Matrix::chol(Sigma)
+
+y <- Sigmachol %*% rnorm(n)  # one random sample from N(0, Sigma). Homework
+
+# at least they give same answer
+(logpdf_mvn_1(y, Sigma))
+(logpdf_mvn_2(y, Sigma))
+(logpdf_mvn_3(y, Sigma))
+```
+
+```{r}
+#| tags: []
+res <- microbenchmark::microbenchmark(logpdf_mvn_1(y, Sigma), logpdf_mvn_2(y, Sigma), logpdf_mvn_3(y, Sigma))
+print(res)
+```
+
+* To evaluate same multivariate normal density at many observations $y_1, y_2, \ldots$, we pre-compute the Cholesky decomposition ($n^3/3$ flops), then each evaluation costs $n^2$ flops.
+
+## Linear regression by Cholesky
+
+* Cholesky decomposition is **one** approach to solve linear regression. Assume $\mathbf{X} \in \mathbb{R}^{n \times p}$ and $\mathbf{y} \in \mathbb{R}^n$.  
+    - Compute $\mathbf{X}^T \mathbf{X}$: $np^2$ flops  
+    - Compute $\mathbf{X}^T \mathbf{y}$: $2np$ flops  
+    - Cholesky decomposition of $\mathbf{X}^T \mathbf{X}$: $\frac{1}{3} p^3$ flops  
+    - Solve normal equation $\mathbf{X}^T \mathbf{X} \beta = \mathbf{X}^T \mathbf{y}$: $2p^2$ flops  
+    - If need standard errors, another $(4/3)p^3$ flops
+
+Total computational cost is $np^2 + (1/3) p^3$ (without s.e.) or $np^2 + (5/3) p^3$ (with s.e.) flops.
+
