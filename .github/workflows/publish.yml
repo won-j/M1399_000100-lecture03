@@ -29,9 +29,7 @@ jobs:
         env:
           GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          install.packages(c("remotes", "Rcpp", "lobstr", "gmp", "float", "knitr", "rmarkdown"))
-          remotes::install_github("hadley/pryr")
-          remotes::install_github("coolbutuseless/uint8")
+          install.packages(c("Matrix", "mvtnorm", "microbench"))
         shell: Rscript {0}
 
       - name: Install Quarto Extension
