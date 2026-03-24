@@ -29,7 +29,7 @@ jobs:
         env:
           GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          install.packages(c("Matrix", "mvtnorm", "microbench", "knitr", "rmarkdown"))
+          install.packages(c("Matrix", "mvtnorm", "microbenchmark", "knitr", "rmarkdown"))
         shell: Rscript {0}
 
       - name: Install Quarto Extension
