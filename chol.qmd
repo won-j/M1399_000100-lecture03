@@ -330,7 +330,8 @@ y <- Sigmachol %*% rnorm(n)  # one random sample from N(0, Sigma). Homework
 ```
 
 ```{r}
-#| tags: []
+#| output-fold: true
+#| jupyter: {outputs_hidden: true}
 res <- microbenchmark::microbenchmark(logpdf_mvn_1(y, Sigma), logpdf_mvn_2(y, Sigma), logpdf_mvn_3(y, Sigma))
 print(res)
 ```
